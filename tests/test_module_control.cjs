@@ -420,6 +420,20 @@ async function main() {
     assert.equal(await getInitialModuleStatus(file), outcome);
     assert.equal(file.writes.length, 2, 'initial I/O failures cached too');
   }
+  {
+    // The native module can be activated while Corona stays in the same app
+    // session. Returning to the homepage must recover from the old timeout.
+    initialize();
+    await queryModuleStatus(statusFile({ read: () => null }), 1, 0);
+    const available = statusFile();
+    const retry = getInitialModuleStatus(available, true);
+    assert.equal(getInitialModuleStatus(available, true), retry,
+      'concurrent retry callers share the same request');
+    assert.deepEqual((await retry).status, running());
+    assert.deepEqual((await getInitialModuleStatus(available, true)).status, running());
+    assert.equal(available.writes.length, 2, 'confirmed status stays cached');
+    assert.equal(available.reads, 1);
+  }
   initialize();
   const resetFile = statusFile();
   await getInitialModuleStatus(resetFile);

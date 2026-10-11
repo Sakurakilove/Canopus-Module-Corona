@@ -74,7 +74,7 @@ export default {
 
   onShow() {
     this.pageActive = true
-    // The app-session cache reuses the first query and any newer reload snapshot.
+    // Re-entering after Canopus activation retries a previous unavailable result.
     return this.loadModuleStatus()
   },
 
@@ -95,7 +95,7 @@ export default {
   async loadModuleStatus() {
     const revision = ++this.statusReadRevision
     try {
-      const outcome = await getInitialModuleStatus(getResourceFileApi(file))
+      const outcome = await getInitialModuleStatus(getResourceFileApi(file), true)
       if (this.pageActive && revision === this.statusReadRevision)
         this.applyModuleOutcome(outcome)
     } catch (_error) {
@@ -122,8 +122,8 @@ export default {
       }
     } else if (outcome.reason === "timeout") {
       this.moduleState = "unresponsive"
-      this.moduleTitle = "模块异常"
-      this.moduleDescription = "未检测到模块"
+      this.moduleTitle = "模块未响应"
+      this.moduleDescription = "请在 Canopus 中启用并立即激活"
       this.moduleIcon = "/common/images/status-unresponsive.png"
     } else if (outcome.reason !== "cancelled" &&
                (this.moduleState === "checking" || this.moduleState === "unavailable")) {

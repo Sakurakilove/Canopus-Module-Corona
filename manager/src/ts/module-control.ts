@@ -250,12 +250,22 @@ export async function queryModuleStatus(
   }
 }
 
-/** One query on the first homepage entry per app session. Subsequent entries
- * receive the latest cached outcome, including status learned from a reload.
+/** Share concurrent queries and cache confirmed status for this app session.
+ * A page re-entry may retry an unavailable outcome after external activation.
+ * This is event-driven; no background polling loop is started.
  */
-export function getInitialModuleStatus(file: ModuleControlFileApi): Promise<ModuleStatusOutcome> {
+export function getInitialModuleStatus(
+  file: ModuleControlFileApi, retryUnavailable = false,
+): Promise<ModuleStatusOutcome> {
   const owner = controlRuntime().session;
   if (!owner.active) return Promise.resolve(cancelled());
+  if (retryUnavailable && owner.latest && !owner.latest.status &&
+      owner.latest.reason !== "cancelled") {
+    // Clear the failed snapshot before starting the retry so onInit/onShow
+    // and separately bundled pages reuse the same in-flight promise.
+    owner.latest = null;
+    owner.initial = null;
+  }
   if (!owner.initial) owner.initial = queryModuleStatus(file);
   return owner.latest ? Promise.resolve(owner.latest) : owner.initial;
 }

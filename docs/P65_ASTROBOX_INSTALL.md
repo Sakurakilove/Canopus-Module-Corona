@@ -50,5 +50,20 @@ Inspect the record in the native Canopus Manager, enable the module and choose
 **Immediately activate**. Corona QuickApp cannot detect a disabled native module.
 The installer keeps other errors, including signature failures, as failures.
 
+## Manager status after activation
+
+The native manager is titled **Canopus** and has System information and Modules
+sections. **Corona** with Resources, Mix and Reload is the QuickApp. The
+`Canopus / RW6` START / RESTORE screen is the bootstrap watchface. These are
+three different screens. Framework ready and an installer still showing a
+submission step do not establish that the Corona module is active.
+
+The 1.3.1-p65 QuickApp retries a previous unavailable status when entering its
+homepage again, instead of caching a failed first check for the whole app
+session. Concurrent entries share one request; confirmed status stays cached.
+A timeout is shown as an unanswered module check, not proof that no installed
+module exists. This change does not load or activate native modules. Enable
+`corona` and immediately activate it in the native Canopus manager first.
+
 Original theme material remains in the user's private repository. No upstream
 PR or official catalog publication is included in this delivery.
