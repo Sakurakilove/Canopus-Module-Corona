@@ -6,6 +6,10 @@ icons under `/resource/app/`, including calendar launcher aliases, settings and
 control-center button states. No theme artwork is included in this repository.
 Install separate `.crpack` files using AstroBox's resource-pack flow.
 
+See [P65_ASTROBOX_INSTALL.md](P65_ASTROBOX_INSTALL.md) for component types and
+installation order. In particular, the RPK must be installed as a QuickApp;
+only the two native component installers use the watchface transport.
+
 The authoritative AP SHA-256 is
 `a19b601477569765103eaf468b937bd8026b4d68ffa5c896bde222a79e475858`.
 
