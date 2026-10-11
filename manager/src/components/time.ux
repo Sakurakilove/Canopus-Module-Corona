@@ -9,7 +9,8 @@
       <text if="{{!flat}}" class="time" style="left:126.1px;top:3.8px;transform: rotate(21deg)">{{time[3]}}</text>
       <text class="pagetitle">{{title}}</text>
     </div>
-    <div class="wide-bar {{flat ? 'wide-bar-flat' : ''}} {{rw6 ? 'wide-bar-rw6' : ''}}">
+    <div class="wide-bar {{flat ? 'wide-bar-flat' : ''}} {{rw6 ? 'wide-bar-rw6' : ''}}"
+      style="{{rw6 ? 'padding-left:36px;padding-right:36px;padding-top:24px;padding-bottom:4px' : ''}}">
       <text class="wide-bar__text">{{title}}</text>
       <text class="wide-bar__time">{{clock}}</text>
     </div>
@@ -109,10 +110,10 @@
 
   /* RW6 rounded corners need a larger inset than the Pro layout. */
   .wide-bar-rw6 {
-    padding-left: 30px;
-    padding-right: 30px;
-    padding-top: 18px;
-    padding-bottom: 10px;
+    padding-left: 36px;
+    padding-right: 36px;
+    padding-top: 24px;
+    padding-bottom: 4px;
   }
 
   .wide-bar__text {
