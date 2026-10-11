@@ -1,4 +1,8 @@
 #include "canopus_abi.h"
+#if defined(RH_TARGET_P65) && RH_TARGET_P65
+#include "resource_hook_p65_io.h"
+static int rh_p65_io_identity_ok(void) { return rh_p65_io_identity() == 0; }
+#endif
 #include "canopus_module_registration.h"
 #include "resource_hook_platform.h"
 #include "resource_hook_target.h"
@@ -16,7 +20,9 @@
 #define RH_STATUS_PREFIX "resource-hook-status-v1\tng.lst.corona\t"
 #define RH_CONTROL_REQUEST_MAX 128u
 #define RH_RELOAD_POLL_MS 1000u
-#if defined(RH_TARGET_1043) && RH_TARGET_1043
+#if defined(RH_TARGET_P65) && RH_TARGET_P65
+#define RH_TARGET_ID "xiaomi-p65-3.100.043"
+#elif defined(RH_TARGET_1043) && RH_TARGET_1043
 #define RH_TARGET_ID "xiaomi-band-10-pro-3.101.043"
 #elif defined(RH_TARGET_177) && RH_TARGET_177
 #define RH_TARGET_ID "xiaomi-band-11-4.100.177"
@@ -370,11 +376,19 @@ static void refresh_step(void *timer, unsigned ui_owner) {
         rh_platform_refresh_mapped_images(old, &current) >= 0)
         images_done = 1;
     if (cache_dropped && images_done && fonts_done && calendar_done &&
+#if defined(RH_TARGET_P65) && RH_TARGET_P65
+        /* P65 static icons are refreshed on the next page entry. Cache
+         * retirement is complete; do not pretend to rebuild live owners. */
+        1) {
+#else
         rh_platform_request_full_redraw() == 0) {
+#endif
         void *done;
         irq = rh_platform_lock();
         done = refresh_timer;
+#if !defined(RH_TARGET_P65) || !RH_TARGET_P65
         if (redraws != UINT32_MAX) redraws++;
+#endif
         refresh_pending = 0;
         refresh_timer = 0;
         previous_owner = refresh_previous_snapshot;
@@ -1123,7 +1137,10 @@ static void cp(char *d, const char *s, unsigned n) {
     while (i < n && s[i]) { d[i] = s[i]; i++; }
     while (i < n) d[i++] = 0;
 }
-__attribute__((constructor)) static void ctor(void) {
+#if !defined(RH_TARGET_P65) || !RH_TARGET_P65
+__attribute__((constructor))
+#endif
+static void ctor(void) {
     struct canopus_module_registration_v1 r;
     int fd, error, written = -1;
     startup_record("ctor.begin", 0, 0, 0);
@@ -1158,4 +1175,19 @@ __attribute__((constructor)) static void ctor(void) {
     }
     startup_record("ctor.end", written == (int)sizeof(r) ? 0 : -1, error, 0);
 }
+#if !defined(RH_TARGET_P65) || !RH_TARGET_P65
 __attribute__((destructor)) static void dtor(void) { (void)stop(0); }
+#else
+struct rh_p65_module_unload { int32_t (*callback)(void *); void *context; };
+static int32_t p65_retain(void *context) { (void)context; return -16; }
+__attribute__((used,section(".text.canopus_module_entry")))
+int32_t corona_p65_module_initialize(struct rh_p65_module_unload *pair) {
+    if (!pair || !rh_p65_io_identity_ok()) return -1;
+    /* Descriptor registration escapes pointers into /dev/canopus. Keep code
+     * alive even after a short/failed registration. Activation runs later,
+     * on Manager's UI task, outside the stock loader mutex. */
+    pair->callback=p65_retain; pair->context=0;
+    ctor();
+    return 0;
+}
+#endif

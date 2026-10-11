@@ -1,6 +1,10 @@
 #ifndef RESOURCE_HOOK_TARGET_H
 #define RESOURCE_HOOK_TARGET_H
 
+#if defined(RH_TARGET_P65) && RH_TARGET_P65
+#include "resource_hook_target_p65.h"
+#else
+
 /* Exact AP-image addresses, not a version-range ABI. Callable addresses carry
  * the Thumb bit. Default remains 4.100.139; .155 requires RH_TARGET_155; 10 Pro
  * 3.101.043 requires RH_TARGET_1043 and the matching Canopus target headers.
@@ -238,3 +242,5 @@
 #define RH_Q66_CALENDAR 0
 #endif
 #endif
+
+#endif /* P65 / other exact targets */

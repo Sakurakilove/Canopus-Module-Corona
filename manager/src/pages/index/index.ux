@@ -38,6 +38,7 @@
 </template>
 
 <script>
+import { RUNTIME_HINT } from "../../ts/runtime-profile"
 import prompt from "@system.prompt"
 import * as file from "../../ts/file"
 import router from "@system.router"
@@ -116,7 +117,7 @@ export default {
       } else {
         this.moduleState = "running"
         this.moduleTitle = "正在工作"
-        this.moduleDescription = `已加载${status.activeRuleCount}条规则`
+        this.moduleDescription = `已加载${status.activeRuleCount}条规则` + (RUNTIME_HINT ? `；${RUNTIME_HINT}` : "")
         this.moduleIcon = "/common/images/status-running.png"
       }
     } else if (outcome.reason === "timeout") {
@@ -143,12 +144,12 @@ export default {
     if (globalThis.themeReceiver) globalThis.themeReceiver.preserveForUser()
   },
 
-  openResources() {
+  async openResources() {
     this.preserveForUser()
     router.push({ uri: "pages/resources" })
   },
 
-  openMixMatch() {
+  async openMixMatch() {
     this.preserveForUser()
     router.push({ uri: "pages/mix-match" })
   },

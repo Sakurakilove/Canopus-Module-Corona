@@ -1,3 +1,4 @@
+import { RUNTIME_TARGET, STATIC_ICONS_ONLY } from "./runtime-profile";
 import {
   THEME_DESTINATION_ROOT, QUICKAPP_ICON_SOURCE_PREFIX, isBinFileDestination,
   isQuickAppIconSource, safeResourceSource, safeRelativeResourcePath, safeThemeDestination,
@@ -294,6 +295,14 @@ export function parseResourcePackManifest(text: string, expectedThemeId?: string
       requiredText(target, `targets[${index}]`, 128));
   }
   const mappings = parseMappings(value.mappings, value.quickappIcons, value.themeId);
+  if (STATIC_ICONS_ONLY) {
+    if (targets && !targets.includes(RUNTIME_TARGET) && !targets.includes("p65-3.100.043"))
+      throw new Error("该资源包不支持 Redmi Watch 6 / 3.100.043");
+    if (value.calendar !== undefined || value.backgrounds !== undefined ||
+        value.launcherBackground !== undefined || value.quickappIcons !== undefined ||
+        mappings.some(mapping => !mapping.source.startsWith("/resource/app/")))
+      throw new Error("RW6 当前适配应用、设置和控制中心图标；此资源包包含未适配功能");
+  }
   function parseBackgroundSetting(val: unknown, themeId: string, label: string): BackgroundSetting {
     if (typeof val === "string") {
       if (val === "system") return { mode: "system" };

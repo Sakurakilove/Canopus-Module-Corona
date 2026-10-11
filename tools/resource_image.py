@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert strict LVGL v9 I8 images and extract files from ROMFS.
+"""Convert LVGL v9 I8 / I8-RLE images and extract files from ROMFS.
 
 Requires Pillow for PNG operations. Palette bytes are interpreted as BGRA,
 following LVGL's lv_color32_t layout; device rendering is not verified here.
@@ -10,20 +10,78 @@ import struct
 import sys
 
 HEADER = struct.Struct('<BBHHHHH')
+MAX_PAYLOAD = 64 * 1024 * 1024
+
+
+def image_payload(data):
+    if len(data) < HEADER.size:
+        raise ValueError('Truncated I8 image')
+    magic, color, flags, width, height, stride, reserved = HEADER.unpack_from(data)
+    if magic != 0x19 or color != 0x0A or flags not in (0, 8) or reserved:
+        raise ValueError('Only LVGL v9 I8 and I8-RLE images are supported')
+    if not width or not height or stride < width or width * height > 16 * 1024 * 1024:
+        raise ValueError('Invalid dimensions or stride')
+    expected = 1024 + stride * height
+    if expected > MAX_PAYLOAD:
+        raise ValueError('I8 image exceeds payload limit')
+    if not flags:
+        if len(data) != 12 + expected:
+            raise ValueError('Image size does not match header and 256-entry palette')
+        return data[12:]
+    if len(data) < 24:
+        raise ValueError('Truncated RLE header')
+    method, packed, expanded = struct.unpack_from('<III', data, 12)
+    if method != 1 or len(data) != 24 + packed or not expected <= expanded <= MAX_PAYLOAD:
+        raise ValueError('Invalid RLE method, size or expanded payload')
+    stream, out, cursor = data[24:], bytearray(), 0
+    while cursor < len(stream):
+        control = stream[cursor]
+        cursor += 1
+        count = control & 0x7F
+        if not count or len(out) + count > expanded:
+            raise ValueError('Invalid RLE run length')
+        if control & 0x80:
+            if cursor + count > len(stream):
+                raise ValueError('Truncated RLE literal')
+            out.extend(stream[cursor:cursor + count])
+            cursor += count
+        else:
+            if cursor >= len(stream):
+                raise ValueError('Truncated RLE repeated byte')
+            out.extend(bytes((stream[cursor],)) * count)
+            cursor += 1
+    if len(out) != expanded:
+        raise ValueError('RLE expanded size mismatch')
+    return bytes(out)
+
+
+def compress_rle(payload):
+    """LVGL method 1: high bit is a literal, low seven bits are byte count."""
+    out, cursor = bytearray(), 0
+    while cursor < len(payload):
+        end = cursor + 1
+        while end < min(cursor + 127, len(payload)) and payload[end] == payload[cursor]:
+            end += 1
+        if end - cursor >= 3:
+            out.extend((end - cursor, payload[cursor]))
+            cursor = end
+            continue
+        start = cursor
+        cursor = end
+        while cursor < len(payload) and cursor - start < 127:
+            if cursor + 2 < len(payload) and payload[cursor] == payload[cursor + 1] == payload[cursor + 2]:
+                break
+            cursor += 1
+        out.append(0x80 | (cursor - start))
+        out.extend(payload[start:cursor])
+    return bytes(out)
 
 
 def parse_image(data):
-    if len(data) < 1036:
-        raise ValueError('Truncated I8 image')
+    payload = image_payload(data)
     magic, color, flags, width, height, stride, reserved = HEADER.unpack_from(data)
-    if (magic, color, flags, reserved) != (0x19, 0x0A, 0, 0):
-        raise ValueError('Only uncompressed LVGL v9 I8 images with zero flags are supported')
-    if not width or not height or stride < width:
-        raise ValueError('Invalid dimensions or stride')
-    if len(data) != 1036 + stride * height:
-        raise ValueError('Image size does not match header and 256-entry palette')
-    palette = [(data[i + 2], data[i + 1], data[i], data[i + 3])
-               for i in range(12, 1036, 4)]
+    palette = [(payload[i + 2], payload[i + 1], payload[i], payload[i + 3])
+               for i in range(0, 1024, 4)]
     return width, height, stride, palette
 
 
@@ -31,8 +89,9 @@ def decode(data):
     from PIL import Image
     width, height, stride, palette = parse_image(data)
     image = Image.new('RGBA', (width, height))
+    payload = image_payload(data)
     image.putdata([palette[index] for y in range(height)
-                   for index in data[1036 + y * stride:1036 + y * stride + width]])
+                   for index in payload[1024 + y * stride:1024 + y * stride + width]])
     return image
 
 
@@ -52,7 +111,7 @@ def encode(image, template, quantize=False):
     if image.tobytes() == decode(template).tobytes():
         return template
     lookup = {color: i for i, color in reversed(list(enumerate(palette)))}
-    result = bytearray(template)
+    result = bytearray(image_payload(template))
     if all(color in lookup for color in pixels):
         indices = bytes(lookup[color] for color in pixels)
     else:
@@ -65,12 +124,15 @@ def encode(image, template, quantize=False):
             pixels = rgba_pixels(image)
             colors = list(dict.fromkeys(pixels))
         lookup = {color: i for i, color in enumerate(colors)}
-        result[12:1036] = b''.join(bytes((b, g, r, a)) for r, g, b, a in colors).ljust(1024, b'\0')
+        result[:1024] = b''.join(bytes((b, g, r, a)) for r, g, b, a in colors).ljust(1024, b'\0')
         indices = bytes(lookup[color] for color in pixels)
     for y in range(height):
-        start = 1036 + y * stride
+        start = 1024 + y * stride
         result[start:start + width] = indices[y * width:(y + 1) * width]
-    return bytes(result)
+    if HEADER.unpack_from(template)[2] == 8:
+        packed = compress_rle(result)
+        return template[:12] + struct.pack('<III', 1, len(packed), len(result)) + packed
+    return template[:12] + bytes(result)
 
 
 def extract_romfs(data, path):
@@ -104,7 +166,9 @@ def extract_romfs(data, path):
             entry, content = name(offset + 16)
             kind = nxt & 7
             current = parent if entry in ('.', '..') else parent + '/' + entry
-            if kind == 1 and entry != '..':
+            # The initial '.' may introduce the root chain. A nested '.' that
+            # points back to itself is a directory marker, not another subtree.
+            if kind == 1 and entry != '..' and (entry != '.' or spec != offset):
                 pending.append((spec, current))
             elif current == path:
                 if kind != 2:

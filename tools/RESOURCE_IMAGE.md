@@ -57,16 +57,23 @@ Do not change theme files while an active resource transaction is running.
 
 ## Scope and verification
 
-Supported header: magic `0x19`, color format `0x0A` (I8), zero flags/reserved,
-12-byte header, 256 BGRA palette entries, one index byte per pixel. Width, height,
-stride and exact file size are checked. Compressed formats, other color formats,
-watchface bundles and resizing are intentionally unsupported. BGRA interpretation
+Supported header: magic `0x19`, color format `0x0A` (I8), flags zero or `0x08`
+(RLE), 12-byte header, 256 BGRA palette entries, one index byte per pixel.
+RLE method 1, declared lengths, run lengths, dimensions, stride and expanded
+budget are checked. The one-byte vendor tail in P65 launcher images is retained.
+Other compression methods, color formats, watchface bundles and resizing remain
+unsupported. BGRA interpretation
 follows LVGL's `lv_color32_t` layout. The user reports that a custom Settings
 launcher icon was visibly displayed on `.155` after installing the current signed
 module with the temporary settings-icon installer; see the narrowly scoped
 [device observation](../docs/INSTALL.md#155-用户报告的单项实机记录).
 This does not validate all palette colors/alpha values, every converted image,
 other resource owners, or `.139` hardware.
+
+The exact P65 3.100.043 resource image's 51 launcher templates passed byte-exact
+decode/re-encode checks offline. This establishes conversion consistency only;
+it does not make Corona or Canopus installable on Redmi Watch 6. The P65 port
+status is documented in [P65_OFFLINE.md](../docs/P65_OFFLINE.md).
 
 The local `.155` resource image's `confirm.bin` (48x48), `cancel.bin` (48x48),
 and `prompt.bin` (80x80) passed byte-exact BIN -> saved PNG -> BIN checks.

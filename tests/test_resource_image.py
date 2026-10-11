@@ -22,6 +22,64 @@ def fixture():
 
 
 class ImageTests(unittest.TestCase):
+    def test_rle_preserves_vendor_tail_and_duplicate_indices(self):
+        original = fixture()
+        header = bytearray(original[:12])
+        struct.pack_into('<H', header, 2, 8)
+        payload = original[12:] + b'\x00'
+        packed = module.compress_rle(payload)
+        compressed = bytes(header) + struct.pack('<III', 1, len(packed), len(payload)) + packed
+        image = module.decode(compressed)
+        self.assertEqual(image.tobytes(), module.decode(original).tobytes())
+        self.assertEqual(module.encode(image, compressed), compressed)
+        image.putpixel((0, 0), (120, 23, 54, 17))
+        edited = module.encode(image, compressed)
+        self.assertEqual(edited[:12], compressed[:12])
+        self.assertEqual(module.decode(edited).tobytes(), image.tobytes())
+        self.assertEqual(module.image_payload(edited)[-2:], bytes((77, 0)))
+
+    def test_rle_rejects_bad_method_lengths_and_runs(self):
+        header = module.HEADER.pack(0x19, 10, 8, 2, 1, 3, 0)
+        payload = fixture()[12:]
+        packed = module.compress_rle(payload)
+        for method, stream, expanded in [
+            (2, packed, len(payload)), (1, packed[:-1], len(payload)),
+            (1, b'\x00\x00', len(payload)), (1, b'\x85\x01', len(payload)),
+            (1, packed + b'\x01\x00', len(payload)),
+            (1, packed, 0xFFFFFFFF),
+        ]:
+            data = header + struct.pack('<III', method, len(stream), expanded) + stream
+            with self.assertRaises(ValueError):
+                module.decode(data)
+
+    def test_rle_literal_boundaries_and_long_runs(self):
+        for payload in [bytes(range(256)) * 4, b'x' * 512,
+                        b'ab' * 100 + b'ccc' + b'de' * 100, bytes(range(127)) + b'zz']:
+            # Reuse an image payload large enough to satisfy the fixed palette.
+            raw = bytes(1024) + payload
+            stream = module.compress_rle(raw)
+            header = module.HEADER.pack(0x19, 10, 8, len(payload), 1, len(payload), 0)
+            encoded = header + struct.pack('<III', 1, len(stream), len(raw)) + stream
+            self.assertEqual(module.image_payload(encoded), raw)
+
+    def test_romfs_nested_dot_self_reference_does_not_hide_siblings(self):
+        data = bytearray(208)
+        data[:8] = b'-rom1fs-'
+        struct.pack_into('>I', data, 8, len(data))
+        data[16:25] = b'resource\0'
+        struct.pack_into('>IIII', data, 32, 1, 64, 0, 0)
+        data[48:50] = b'.\0'
+        struct.pack_into('>IIII', data, 64, 1, 96, 0, 0)
+        data[80:84] = b'app\0'
+        struct.pack_into('>IIII', data, 96, 128 | 1, 96, 0, 0)
+        data[112:114] = b'.\0'
+        struct.pack_into('>IIII', data, 128, 2, 0, 3, 0)
+        data[144:150] = b'a.bin\0'
+        data[160:163] = b'abc'
+        self.assertEqual(module.extract_romfs(bytes(data), '/resource/app/a.bin'), b'abc')
+        with self.assertRaises(ValueError):
+            module.extract_romfs(bytes(data), '/missing')
+
     def test_bgra_and_transparency(self):
         self.assertEqual(module.rgba_pixels(module.decode(fixture())), [(10, 20, 30, 128), (0, 0, 0, 0)])
 

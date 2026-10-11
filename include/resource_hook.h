@@ -3,7 +3,15 @@
 #include <stdint.h>
 #define RH_RULES 256
 #define RH_PATH 256
-/* Native internal://files/ roots differ between Band 10 Pro and Band 11. */
+/* P65 AP literal at 0x0C39091C confirms the /data/quickapp/files/ layout.
+ * RH_TARGET_P65 permits offline core tests; it does not enable a native module. */
+#if defined(RH_TARGET_P65) && RH_TARGET_P65 && \
+    ((defined(RH_TARGET_1043) && RH_TARGET_1043) || \
+     (defined(RH_TARGET_155) && RH_TARGET_155) || \
+     (defined(RH_TARGET_177) && RH_TARGET_177))
+#error "Select exactly one Resource Hook target"
+#endif
+/* Native internal://files/ roots differ between Band 10 Pro and Band 11/P65. */
 #if defined(RH_TARGET_1043) && RH_TARGET_1043
 #define RH_APP_FILES_ROOT "/data/files/ng.lst.corona/"
 #else
@@ -59,6 +67,8 @@ struct rh_state {
     rh_open_fn original; void *driver; int installed;
     uint32_t rules_capacity;
 };
+/* Validate one mapping without allocating a rule or sorting workspace. */
+int rh_mapping_valid(const char *source, const char *destination);
 int rh_validate_rules(const struct rh_rule *, uint32_t);
 /* Legacy state backing is caller-owned and must have sufficient capacity.
  * Input/staging storage must not overlap the live backing array. */

@@ -50,19 +50,19 @@ const char *rh_quickapp_package(const char *source) {
     }
     return package;
 }
-static int rule_ok(const struct rh_rule *r) {
+int rh_mapping_valid(const char *source, const char *destination) {
     static const char root[] = RH_THEME_ROOT;
-    uint32_t a = length(r->source), b = length(r->destination);
-    const char *package = rh_quickapp_package(r->source);
-    if (!package && !valid(r->source)) return 0;
-    if (package && !system_destination(r->destination) &&
-        (b < 4u || rh_key_compare(r->destination+b-4u, 4u, ".bin", 4u))) return 0;
+    uint32_t a = length(source), b = length(destination);
+    const char *package = rh_quickapp_package(source);
+    if (!package && !valid(source)) return 0;
+    if (package && !system_destination(destination) &&
+        (b < 4u || rh_key_compare(destination+b-4u, 4u, ".bin", 4u))) return 0;
     /* System means leave the exact file on its original firmware path. */
-    if (system_destination(r->destination)) return package || r->source[a-1u] != '/';
-    if (!valid(r->destination) || !prefix(r->destination, root, sizeof(root)-1u)) return 0;
+    if (system_destination(destination)) return package || source[a-1u] != '/';
+    if (!valid(destination) || !prefix(destination, root, sizeof(root)-1u)) return 0;
     /* Directory rules append a suffix; file rules replace one exact path. */
-    return package ? r->destination[b-1u] != '/' :
-        (r->source[a-1u] == '/') == (r->destination[b-1u] == '/');
+    return package ? destination[b-1u] != '/' :
+        (source[a-1u] == '/') == (destination[b-1u] == '/');
 }
 
 static int legacy_compare(const struct rh_rule *rules, uint16_t a, uint16_t b) {
@@ -87,7 +87,7 @@ int rh_validate_rules(const struct rh_rule *r, uint32_t n) {
     uint32_t i;
     if (n > RH_RULES || (n && !r)) return -1;
     for (i = 0; i < n; i++) {
-        if (!rule_ok(&r[i])) return -2;
+        if (!rh_mapping_valid(r[i].source, r[i].destination)) return -2;
         order[i] = (uint16_t)i;
     }
     for (i = n / 2u; i > 0; i--) index_sift(order, i-1u, n, r);

@@ -7,6 +7,9 @@ if [ -z "${CANOPUS_ROOT:-}" ] && [ ! -d "$SDK" ]; then
 fi
 [ "$#" -le 1 ] || { printf 'usage: build.sh [target-id]\n' >&2; exit 1; }
 TARGET_ID=${1:-xiaomi-band-11-4.100.139}
+if [ "$TARGET_ID" = xiaomi-p65-3.100.043 ]; then
+    exec sh "$ROOT/scripts/build-p65-manager.sh"
+fi
 case "$TARGET_ID" in
     xiaomi-band-11-4.100.139) TARGET_DEFINE=; NATIVE_PLATFORM=platform_band11 ;;
     xiaomi-band-11-4.100.177) TARGET_DEFINE=-DRH_TARGET_177=1; NATIVE_PLATFORM=platform_band11 ;;
