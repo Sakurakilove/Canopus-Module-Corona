@@ -11,7 +11,7 @@ mkdir -p "$OUT"
 python3 - "$ROOT" "$OUT" <<'PY'
 import json,pathlib,sys
 root,out=map(pathlib.Path,sys.argv[1:]);rows=json.loads((root/'resources/p65-icon-sources.json').read_text())
-if not rows or len(rows)!=len(set(rows)) or any(not p.startswith('/resource/app/') or not p.endswith('.bin') for p in rows):raise ValueError('Invalid P65 cache source paths')
+if not rows or len(rows)!=len(set(rows)) or any((not p.startswith('/resource/app/') and p != '/data/quickapp/app/perpetual_calendar/calendar_icon.bin') or not p.endswith('.bin') for p in rows):raise ValueError('Invalid P65 cache source paths')
 (out/'p65_icon_sources.h').write_text('#define RH_P65_ICON_SOURCE_COUNT '+str(len(rows))+'u\nstatic const char *const rh_p65_icon_sources[]={\n'+',\n'.join(json.dumps(p) for p in rows)+'\n};\n')
 PY
 OBJECTS=""

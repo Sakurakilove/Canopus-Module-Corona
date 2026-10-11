@@ -12,7 +12,11 @@ static int rh_p65_io_identity_ok(void) { return rh_p65_io_identity() == 0; }
 #include "resource_hook_calendar_runtime.h"
 
 #define RH_MODULE_ID "corona"
+#if defined(RH_TARGET_P65) && RH_TARGET_P65
+#define RH_VERSION "0.3.1-p65"
+#else
 #define RH_VERSION "0.3.0"
+#endif
 /* Resolve app-scoped control paths using the selected firmware target. */
 #define RH_CONTROL_CONFIG RH_CONFIG_PATH
 #define RH_RELOAD_PREFIX "resource-hook-reload-v1\t"

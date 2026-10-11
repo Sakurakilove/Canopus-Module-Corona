@@ -300,7 +300,8 @@ export function parseResourcePackManifest(text: string, expectedThemeId?: string
       throw new Error("该资源包不支持 Redmi Watch 6 / 3.100.043");
     if (value.calendar !== undefined || value.backgrounds !== undefined ||
         value.launcherBackground !== undefined || value.quickappIcons !== undefined ||
-        mappings.some(mapping => !mapping.source.startsWith("/resource/app/")))
+        mappings.some(mapping => !mapping.source.startsWith("/resource/app/") &&
+          mapping.source !== "/data/quickapp/app/perpetual_calendar/calendar_icon.bin"))
       throw new Error("RW6 当前适配应用、设置和控制中心图标；此资源包包含未适配功能");
   }
   function parseBackgroundSetting(val: unknown, themeId: string, label: string): BackgroundSetting {

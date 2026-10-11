@@ -2,21 +2,21 @@
 
 <template>
   <div class="page" ontouchstart="preserveForUser">
-    <div class="time-section">
+    <div class="time-section" style="{{rw6 ? 'top:0px;height:60px' : ''}}">
       <time-banner title="{{headerTitle}}" clickable="true" onactivate="goBack" />
     </div>
 
-    <img if="{{phase == 'waiting'}}" class="hero" src="/common/images/connect.png" />
-    <img if="{{phase == 'ready'}}" class="hero" src="/common/images/choose.png" />
-    <img if="{{phase == 'receiving'}}" class="hero-small" src="/common/images/download.png" />
-    <img if="{{phase == 'error'}}" class="hero-small" src="/common/images/error.png" />
-    <img if="{{phase == 'success'}}" class="hero-small" src="/common/images/succ.png" />
+    <img if="{{phase == 'waiting'}}" class="hero" style="{{rw6 ? 'left:116.5px;top:112px' : ''}}" src="/common/images/connect.png" />
+    <img if="{{phase == 'ready'}}" class="hero" style="{{rw6 ? 'left:116.5px;top:112px' : ''}}" src="/common/images/choose.png" />
+    <img if="{{phase == 'receiving'}}" class="hero-small" style="{{rw6 ? 'left:156px;top:152px' : ''}}" src="/common/images/download.png" />
+    <img if="{{phase == 'error'}}" class="hero-small" style="{{rw6 ? 'left:156px;top:152px' : ''}}" src="/common/images/error.png" />
+    <img if="{{phase == 'success'}}" class="hero-small" style="{{rw6 ? 'left:156px;top:152px' : ''}}" src="/common/images/succ.png" />
 
-    <text class="phase-title">{{phaseTitle}}</text>
-    <text if="{{phase != 'receiving'}}" class="message">{{message}}</text>
+    <text class="phase-title" style="{{rw6 ? 'top:332px' : ''}}">{{phaseTitle}}</text>
+    <text if="{{phase != 'receiving'}}" class="message" style="{{rw6 ? 'left:56px;top:382px;width:320px;height:80px' : ''}}">{{message}}</text>
 
-    <div if="{{phase == 'receiving'}}" class="transfer-info">
-      <text class="progress">{{percent}}%</text>
+    <div if="{{phase == 'receiving'}}" class="transfer-info" style="{{rw6 ? 'left:56px;top:382px;width:320px' : ''}}">
+      <text class="progress" style="{{rw6 ? 'width:320px' : ''}}">{{percent}}%</text>
     </div>
 
 
@@ -26,9 +26,11 @@
 <script>
 import router from "@system.router"
 import brightness from "@system.brightness"
+import { RUNTIME_TARGET } from "../../ts/runtime-profile"
 
 export default {
   private: {
+    rw6: RUNTIME_TARGET === "xiaomi-p65-3.100.043",
     headerTitle: "< 主题传输",
     phase: "waiting",
     phaseTitle: "等待连接",

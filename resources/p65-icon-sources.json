@@ -106,5 +106,10 @@
   "/resource/app/control_center/air_mode_open.bin",
   "/resource/app/control_center/air_mode_forbid.bin",
   "/resource/app/control_center/air_mode_conn.bin",
-  "/resource/app/control_center/air_mode_close.bin"
+  "/resource/app/control_center/air_mode_close.bin",
+  "/resource/app/perpetual_calendar/launcher_icon.bin",
+  "/resource/app/perpetual_calendar/launcher.bin",
+  "/resource/app/notifications/calendar_icon.bin",
+  "/resource/app/notifications/calendar.bin",
+  "/data/quickapp/app/perpetual_calendar/calendar_icon.bin"
 ]

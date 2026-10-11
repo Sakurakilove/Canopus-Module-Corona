@@ -11,6 +11,7 @@
 #include "resource_hook_calendar_runtime.h"
 #include "resource_hook_quickapp.h"
 #include "p65_icon_sources.h"
+#include "resource_hook_p65_paths.h"
 
 int rh_platform_open(const char *p,int flags){return rh_p65_io_open(p,flags);}
 int rh_platform_errno(void){return rh_p65_io_errno();}
@@ -59,12 +60,11 @@ int rh_platform_request_full_redraw(void){return -1;}
 int rh_platform_font_path_get(uint32_t i,char *name,char *path){(void)i;if(name)name[0]=0;if(path)path[0]=0;return -1;}
 int rh_platform_font_retarget(uint32_t i,const char *path){(void)i;(void)path;return -2150;}
 int rh_font_reload(const struct rh_mapping_view *v,uint32_t *changed){
-    uint32_t i,j;static const char prefix[]="/resource/app/";
+    uint32_t i;
     if(changed)*changed=0;
     for(i=0;v&&i<v->count;i++){
         const char *source=v->snapshot?rh_snapshot_pool(v->snapshot)+v->snapshot->rules[i].source_offset:v->rules[i].source;
-        for(j=0;prefix[j]&&source[j]==prefix[j];j++);
-        if(prefix[j])return -2150;
+        if(!rh_p65_icon_source_allowed(source))return -2150;
     }
     return 0;
 }
