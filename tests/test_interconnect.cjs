@@ -284,6 +284,59 @@ async function main() {
   sent.length = 0;
   apkStatus = undefined;
 
+  // P65 boundary regression: the phone receives replies but the native SDK
+  // never invokes send.success/fail. A completed H must not block the T queue.
+  const { InterconnectSendQueue } = require(path.join(temporary, 'interconnect-send.js'));
+  const p65Receiver = new InterconnectThemeReceiver();
+  p65Receiver.sendQueue = new InterconnectSendQueue(true);
+  const p65Bytes = Buffer.from(JSON.stringify({ ...coronaObject, themeId: 'callback_test',
+    mappings: [], calendar: undefined }));
+  const p65Header = { themeId: 'callback_test', mode: 'replace', fileCount: 1, totalBytes: p65Bytes.length };
+  const replySend = connection.send;
+  let finishP65;
+  const p65Finished = new Promise(resolve => { finishP65 = resolve; });
+  connection.send = options => {
+    sent.push(options.data); // Deliberately do not call either native callback.
+    const packet = options.data.msg;
+    const value = /^[HTP]/.test(packet) ? JSON.parse(packet.slice(1)) : {};
+    let next;
+    if (packet[0] === 'H' && value.type === 'response')
+      next = 'T' + JSON.stringify({ operation: 'begin', ...p65Header });
+    else if (packet[0] === 'T' && value.itemType === 'begin')
+      next = 'T' + JSON.stringify({ operation: 'file', themeId: p65Header.themeId,
+        fileIndex: 0, relativePath: 'corona.json', sizeBytes: p65Bytes.length });
+    else if (packet[0] === 'T' && value.itemType === 'file')
+      next = 'T' + JSON.stringify({ operation: 'end', themeId: p65Header.themeId });
+    else if (packet[0] === 'T' && value.status === 'ready' && !p65Receiver.state.finished)
+      next = 'P' + JSON.stringify({ themeId: p65Header.themeId, fileIndex: 0,
+        sizeBytes: p65Bytes.length, chunkSizeBytes: p65Bytes.length, chunkCount: 1 });
+    else if (packet[0] === 'P') next = 'F00000000' + encodeBase91(p65Bytes);
+    else if (packet[0] === 'A') {
+      assert.deepEqual(Buffer.from(native.binary.get('internal://files/themes/callback_test/corona.json')),
+        p65Bytes, 'chunk bytes are durable before the phone receives A');
+      next = 'C0000';
+    } else if (packet[0] === 'C')
+      next = 'T' + JSON.stringify({ operation: 'finish', themeId: p65Header.themeId });
+    else if (packet[0] === 'T' && value.status === 'ready') finishP65();
+    if (next) queueMicrotask(() => connection.onmessage({ data: next }));
+  };
+  p65Receiver.start();
+  connection.onmessage({ data: 'H' + JSON.stringify({ version: 2, type: 'request',
+    requestId: 'p65_missing_callback', maxTextChars: 18000 }) });
+  let p65Deadline;
+  await Promise.race([p65Finished, new Promise((_, reject) => {
+    p65Deadline = setTimeout(() => reject(new Error('H reply blocked the T manifest queue')), 2500);
+  })]).finally(() => clearTimeout(p65Deadline));
+  await p65Receiver.queue;
+  assert.equal(p65Receiver.snapshot.phase, 'success');
+  const quitWait = p65Receiver.sendQueue.send(connection, { msg: 'Q{"status":"ready"}' });
+  await assert.rejects(quitWait, /完成回调超时/, 'Q never fabricates native delivery confirmation');
+  assert.equal(terminateCalls, 0);
+  p65Receiver.stop();
+  connection.send = replySend;
+  native.text.clear(); native.binary.clear(); native.directories.clear();
+  native.directories.add('internal://files/'); native.mutations.length = 0; sent.length = 0;
+
   const states = [];
   let transferPageRequests = 0;
   let receiver = new InterconnectThemeReceiver(() => { transferPageRequests++; });
@@ -358,6 +411,11 @@ async function main() {
   const header = { themeId: 'dark', mode: 'replace', fileCount: 2, totalBytes: coronaBytes.length + 3 };
   let reply = messages(await deliver('T' + JSON.stringify({ operation: 'begin', ...header })));
   assert(reply.some(packet => packet.operation === 'ack' && packet.itemType === 'begin'));
+  const previousTransfer = await durableStateText();
+  reply = messages(await deliver('T' + JSON.stringify({ operation: 'begin', ...header, themeId: 'other' })));
+  assert(reply.some(packet => packet.errorCode === 'invalid-manifest' && packet.themeId === 'other'),
+    'AstroBox must receive a rejection for its requested theme, not filter an old theme ID');
+  assert.equal(await durableStateText(), previousTransfer, 'rejection preserves unfinished theme data');
   reply = messages(await deliver('T' + JSON.stringify({ operation: 'file', themeId: 'dark', fileIndex: 0,
     relativePath: '../bad', sizeBytes: 2 })));
   assert(reply.some(packet => packet.errorCode === 'invalid-manifest' || packet.errorCode === 'invalid-path'));

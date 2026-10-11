@@ -1,0 +1,86 @@
+{
+  "upstream": "https://github.com/AstralSightStudios/Canopus-Module-Corona",
+  "revision": "ee58bed7644cf9e2c2631b285b7ba5cf0301e12c",
+  "managerVersion": "1.3.4-p65",
+  "protocolVersion": 2,
+  "hardwareTimeoutResolved": false,
+  "files": [
+    {
+      "path": "manager/src/app.ux",
+      "sha256": "8418751166e7f0a0c40650061235190c506f187b1e18169ea97f44c13007bb0f",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/src/ts/interconnect.ts",
+      "sha256": "5cf0ee98456617941791bb19c2aa67dedb18cdac9e086953bfea7f68d96f088e",
+      "matchesUpstream": false,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/src/ts/file.ts",
+      "sha256": "de1ba68680a44247750dbba982395af4c66b44cdc0c39ad995367c7e038ef977",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/src/ts/transfer-storage.ts",
+      "sha256": "7e961afc12baa999bdbbbb68826ec31bcc468daffda04f622582e7467c8ba637",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/src/ts/resource-path.ts",
+      "sha256": "de7f2119ed20dd6899fc4d3beaccf51f2ff69da08aa278acadcd5e8d5e799119",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/src/ts/resource-order.ts",
+      "sha256": "05f77285e56c111d553b6116159c5f5d77ac0bd61ab5981de72bed298c0d1413",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/src/ts/resource-storage.ts",
+      "sha256": "57d6f4ef3ad132df781ddb7dbc14f58b7ac0b340a67fab2bbadf2d006c5ad118",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/src/ts/resource-overrides.ts",
+      "sha256": "0a8aab1f552dabd9cb8c78fb9f7284eb344d1a7f2c65382d1862a90fadc9fd04",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": false
+    },
+    {
+      "path": "manager/src/ts/resource-activation.ts",
+      "sha256": "538e1163f7df6233247ab2e216d84e7eea96449cf329bed33476e45743c19e23",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": false
+    },
+    {
+      "path": "manager/src/pages/receive/receive.ux",
+      "sha256": "e16146f53331c263098a6ba4839efac861c7f846cdc29c834c1cebbcb9588505",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/quickapp.config.js",
+      "sha256": "8b77d7514d22490f8f90e527b9571322d2d9b05d3dbc0f5b2d9c5cffe7bf0f69",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    },
+    {
+      "path": "manager/package.json",
+      "sha256": "c3e5d2e903bfd85310482e2e94b51ccea0b8795fadef6f04d043a4fb65f89a6d",
+      "matchesUpstream": true,
+      "previousVersionAlreadyIdentical": true
+    }
+  ],
+  "fixes": [
+    "P65 normal response queue can progress without a native send callback; Q requires native success",
+    "T/P rejections carry the requested theme ID, not the previous persisted theme"
+  ],
+  "wireProtocolChanged": false
+}

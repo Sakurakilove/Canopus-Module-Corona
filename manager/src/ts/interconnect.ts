@@ -10,6 +10,8 @@ import { invalidateResourceCatalog, withResourceOperation } from "./resource-ove
 import { readProtectedThemeIds } from "./resource-activation";
 import { TransferStorage } from "./transfer-storage";
 import type { StoredFile, TransferState } from "./transfer-storage";
+import { InterconnectSendQueue } from "./interconnect-send";
+import { RUNTIME_TARGET } from "./runtime-profile";
 
 const VERSION = 2;
 const TRANSFER_STATE_VERSION = 1;
@@ -252,6 +254,7 @@ export class InterconnectThemeReceiver {
   private readonly preparedDirectories = new Set<string>();
   private directoryEpoch = 0;
   private queue: Promise<void> = Promise.resolve();
+  private readonly sendQueue = new InterconnectSendQueue(RUNTIME_TARGET === "xiaomi-p65-3.100.043");
   private stopped = false;
   private handshakeSent = false;
   private peerMaxTextChars = MAX_TEXT_CHARS;
@@ -320,6 +323,7 @@ export class InterconnectThemeReceiver {
     this.updateSnapshot({ phase: "waiting", message: "等待手机端互联连接…" });
     link.onmessage = event => {
       const packet = typeof event === "string" ? event : event && event.data;
+      if (typeof packet === "string") this.sendQueue.peerProgress(packet);
       this.enqueue(typeof packet === "string" ? packet : "");
     };
     const opened = (event: InterconnectEvent = {}) => {
@@ -336,6 +340,7 @@ export class InterconnectThemeReceiver {
     };
     link.onopen = opened;
     link.onclose = event => {
+      this.sendQueue.cancel();
       this.clearPreparedDirectories();
       this.connectionGeneration++;
       this.transferActive = false;
@@ -347,6 +352,7 @@ export class InterconnectThemeReceiver {
       }
     };
     link.onerror = event => {
+      this.sendQueue.cancel();
       this.clearPreparedDirectories();
       this.connectionGeneration++;
       this.transferActive = false;
@@ -376,6 +382,7 @@ export class InterconnectThemeReceiver {
   stop(): void {
     this.clearPreparedDirectories();
     this.stopped = true;
+    this.sendQueue.cancel();
     this.connectionGeneration++;
     this.transferActive = false;
     this.preserveForUser();
@@ -678,17 +685,17 @@ export class InterconnectThemeReceiver {
     } catch (error) {
       this.clearPreparedDirectories();
       if (!this.isCurrentConnection(generation)) return;
-      const themeId = this.state?.themeId;
+      const themeId = this.errorThemeId(packet);
       const operation = packet[0] === "T" ? this.safeOperation(packet) : "";
       const code = errorCode(error, "write-failed");
       if (packet[0] === "T" && operation === "end") {
         try {
           await this.sendJson("T", {
-            operation: "status", themeId: themeId || "unknown", status: "reject", errorCode: code
+            operation: "status", themeId, status: "reject", errorCode: code
           });
         } catch (_sendError) { /* The sender will retry the end packet. */ }
       } else {
-        try { await this.sendError(code); }
+        try { await this.sendError(code, themeId); }
         catch (_sendError) { /* The sender will retry; persisted chunks remain safe. */ }
       }
       this.setPhase("error", `接收错误（${code}）：${String((error as Error).message || error)}`);
@@ -698,6 +705,18 @@ export class InterconnectThemeReceiver {
   private safeOperation(packet: string): string {
     try { return String(parseJsonPacket(packet, "T").operation || ""); }
     catch (_error) { return ""; }
+  }
+
+  private errorThemeId(packet: string): string | undefined {
+    if (packet[0] === "T" || packet[0] === "P") {
+      try {
+        const requested = parseJsonPacket(packet, packet[0]).themeId;
+        // AstroBox filters foreign theme IDs before reading errorCode. A rejected
+        // new request must not be labelled with the previous persisted theme.
+        return validThemeId(requested) ? requested : undefined;
+      } catch (_error) { return undefined; }
+    }
+    return this.state?.themeId;
   }
 
   private async handleHandshake(packet: string): Promise<void> {
@@ -1089,10 +1108,10 @@ export class InterconnectThemeReceiver {
     await this.send(`A${hex4(fileIndex)}${hex4(chunkIndex)}`);
   }
 
-  private async sendError(errorCodeValue: string): Promise<void> {
+  private async sendError(errorCodeValue: string, themeId = this.state?.themeId): Promise<void> {
     await this.sendJson("E", {
-      themeId: this.state?.themeId,
-      fileIndex: this.currentFileIndex(),
+      themeId,
+      fileIndex: themeId === this.state?.themeId ? this.currentFileIndex() : undefined,
       errorCode: errorCodeValue
     });
   }
@@ -1123,16 +1142,7 @@ export class InterconnectThemeReceiver {
     if (!this.link) throw new Error("interconnect 尚未连接");
     if (structured && !this.objectFits(envelope))
       throw new Error("待发送互联消息超过协商长度");
-    const link = this.link;
-    await new Promise<void>((resolve, reject) => {
-      try {
-        link.send({
-          data: envelope,
-          success: resolve,
-          fail: (data, code) => reject(new Error(`interconnect.send 失败（${code}）：${String(data)}`))
-        });
-      } catch (error) { reject(error); }
-    });
+    await this.sendQueue.send(this.link, envelope);
   }
 
   private clearPreparedDirectories(): void {
