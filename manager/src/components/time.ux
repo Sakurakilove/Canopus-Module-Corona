@@ -9,7 +9,7 @@
       <text if="{{!flat}}" class="time" style="left:126.1px;top:3.8px;transform: rotate(21deg)">{{time[3]}}</text>
       <text class="pagetitle">{{title}}</text>
     </div>
-    <div class="wide-bar {{flat ? 'wide-bar-flat' : ''}}">
+    <div class="wide-bar {{flat ? 'wide-bar-flat' : ''}} {{rw6 ? 'wide-bar-rw6' : ''}}">
       <text class="wide-bar__text">{{title}}</text>
       <text class="wide-bar__time">{{clock}}</text>
     </div>
@@ -107,6 +107,14 @@
     padding-right: 12px;
   }
 
+  /* RW6 rounded corners need a larger inset than the Pro layout. */
+  .wide-bar-rw6 {
+    padding-left: 30px;
+    padding-right: 30px;
+    padding-top: 18px;
+    padding-bottom: 10px;
+  }
+
   .wide-bar__text {
     height: 32px;
     font-size: 32px;
@@ -125,10 +133,13 @@
 </style>
 
 <script>
+import { RUNTIME_TARGET } from "../ts/runtime-profile"
+
 export default {
   props: ["title", "clickable", "flat"],
 
   private: {
+    rw6: RUNTIME_TARGET === "xiaomi-p65-3.100.043",
     time: "0000",
     clock: "00:00",
     timer: null

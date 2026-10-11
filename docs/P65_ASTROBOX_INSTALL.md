@@ -67,3 +67,7 @@ module exists. This change does not load or activate native modules. Enable
 
 Original theme material remains in the user's private repository. No upstream
 PR or official catalog publication is included in this delivery.
+
+## RPK 1.3.2-p65：顶部圆角留白
+
+RW6 使用专用顶部留白：标题与时间左右内边距均为30px，上内边距18px，下内边距10px，条带总高度不变。该覆盖仅在运行目标为 xiaomi-p65-3.100.043 时生效，其他机型保持原布局。RPK版本码10，通过快应用入口更新。
