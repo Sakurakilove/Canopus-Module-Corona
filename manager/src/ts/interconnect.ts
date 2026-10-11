@@ -404,6 +404,13 @@ export class InterconnectThemeReceiver {
     this.updateSnapshot({ phase, message });
   }
 
+  private openTransferPage(force = false): void {
+    if (this.transferPageOpened && !force) return;
+    this.transferPageOpened = true;
+    try { this.onTransferPage?.(); }
+    catch (_error) { /* Navigation must not interrupt durable transfer work. */ }
+  }
+
   private receivedBytesForFile(item: StoredFile): number {
     if (item.complete) return item.sizeBytes;
     if (item.chunkSizeBytes === null) return 0;
@@ -475,6 +482,7 @@ export class InterconnectThemeReceiver {
       this.clearPreparedDirectories();
       const code = errorCode(error, "write-failed");
       this.setPhase("error", `接收错误（${code}）：${String((error as Error).message || error)}`);
+      if (packet[0] === "T" || packet[0] === "P") this.openTransferPage();
       try {
         await this.sendError(code);
       } catch (_sendError) {
@@ -699,6 +707,7 @@ export class InterconnectThemeReceiver {
         catch (_sendError) { /* The sender will retry; persisted chunks remain safe. */ }
       }
       this.setPhase("error", `接收错误（${code}）：${String((error as Error).message || error)}`);
+      if (packet[0] === "T" || packet[0] === "P") this.openTransferPage();
     }
   }
 
@@ -795,11 +804,18 @@ export class InterconnectThemeReceiver {
         !integer(fileCount, 1, MAX_PROTOCOL_TRANSFER_FILES) || !integer(totalBytes, 0, MAX_THEME_BYTES))
       throw protocolError("invalid-manifest", "主题清单头无效或超过本地上限");
 
+    this.updateSnapshot({ phase: "ready", message: `正在核对主题 ${themeId} 的传输状态…`,
+      themeId, fileCount, totalBytes, fileName: "", fileIndex: 0, bytesReceived: 0, percent: 0 });
+    // The app callback checks page visibility. A fresh begin must bring the
+    // page back even after the user returned home from a previous attempt.
+    this.openTransferPage(true);
     await this.ensureStateLoaded();
     this.clearPreparedDirectories();
     const current = this.state;
     if (mode === "resume") {
-      if (!current || !sameHeader(current, themeId, fileCount, totalBytes) || !current.manifestComplete)
+      // AstroBox publishes a resume token immediately after the T begin ACK,
+      // before any file entries. An interrupted manifest is resumable too.
+      if (!current || !sameHeader(current, themeId, fileCount, totalBytes))
         throw protocolError("invalid-manifest", "没有可匹配的续传状态；请以 replace 重新传输");
       if (current.mode === "resume" && current.manifestReceiving) {
         this.activateTransfer(generation);
@@ -809,7 +825,6 @@ export class InterconnectThemeReceiver {
       const next = { ...current, mode: "resume" as const, manifestReceiving: true, manifestSeen: 0 };
       this.activateTransfer(generation);
       await this.persist(next, -1);
-      if (current.finished) this.transferPageOpened = false;
       await this.sendTransferAck(themeId, "begin");
       this.updateSnapshot({ phase: "ready", message: `正在校验主题 ${themeId} 的续传清单…`, themeId,
         fileCount, totalBytes, bytesReceived: 0, percent: 0 });
@@ -823,8 +838,9 @@ export class InterconnectThemeReceiver {
       await this.sendTransferAck(themeId, "begin");
       return;
     }
-    if (current && !current.finished && current.themeId !== themeId)
-      throw protocolError("invalid-manifest", `主题 ${current.themeId} 仍有未完成传输`);
+    // A new AstroBox task explicitly requests replace. It supersedes the one
+    // unfinished transfer record; an abandoned different theme must not lock
+    // the receiver forever. Only the requested theme directory is replaced.
     if (await this.isThemeActive(themeId))
       throw protocolError("active-theme", `主题 ${themeId} 正在使用；请先切换到其他主题`);
 
@@ -849,7 +865,6 @@ export class InterconnectThemeReceiver {
       finished: false
     };
     await this.persist(next);
-    this.transferPageOpened = false;
     await this.sendTransferAck(themeId, "begin");
     this.updateSnapshot({ phase: "ready", message: `正在接收主题 ${themeId} 的文件清单…`, themeId,
       fileName: "", fileIndex: 0, fileCount, bytesReceived: 0, totalBytes, percent: 0 });
@@ -881,9 +896,16 @@ export class InterconnectThemeReceiver {
     const next = { ...state, manifestSeen: state.manifestSeen + 1 };
     if (state.mode === "resume") {
       const existing = state.files[index];
-      if (!existing || !sameManifestFile(existing, entry))
+      if (existing && !sameManifestFile(existing, entry))
         throw protocolError("invalid-manifest", "续传清单与原清单不同；请使用 replace");
-      await this.persist(next, -1);
+      if (existing) await this.persist(next, -1);
+      else {
+        // Only the previously unreceived tail can be appended. Preserve all
+        // replayed entries, chunk geometry and received bitmaps unchanged.
+        if (state.manifestComplete || index !== state.files.length)
+          throw protocolError("invalid-manifest", "续传清单缺少既有文件记录；请使用 replace");
+        await this.persist(next, index, toStoredFile(entry));
+      }
     } else {
       await this.persist(next, index, toStoredFile(entry));
     }
@@ -975,11 +997,7 @@ export class InterconnectThemeReceiver {
     }
     await this.sendPrepared(index, next.files[index]);
     this.updateTransferProgress(next, index, `等待接收：${stored.relativePath}`);
-    if (!this.transferPageOpened) {
-      this.transferPageOpened = true;
-      try { this.onTransferPage?.(); }
-      catch (_error) { /* Navigation must not interrupt the transfer. */ }
-    }
+    this.openTransferPage();
   }
 
   private async handleFileChunk(packet: string): Promise<void> {

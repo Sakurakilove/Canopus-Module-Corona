@@ -1,7 +1,7 @@
 {
   "upstream": "https://github.com/AstralSightStudios/Canopus-Module-Corona",
   "revision": "ee58bed7644cf9e2c2631b285b7ba5cf0301e12c",
-  "managerVersion": "1.3.4-p65",
+  "managerVersion": "1.3.5-p65",
   "protocolVersion": 2,
   "hardwareTimeoutResolved": false,
   "files": [
@@ -13,7 +13,7 @@
     },
     {
       "path": "manager/src/ts/interconnect.ts",
-      "sha256": "5cf0ee98456617941791bb19c2aa67dedb18cdac9e086953bfea7f68d96f088e",
+      "sha256": "235861fe6ca8b5c2bf8bf4a290ddafc45b402eb366b97a1b11e03347b5bb6f7b",
       "matchesUpstream": false,
       "previousVersionAlreadyIdentical": true
     },
@@ -80,7 +80,11 @@
   ],
   "fixes": [
     "P65 normal response queue can progress without a native send callback; Q requires native success",
-    "T/P rejections carry the requested theme ID, not the previous persisted theme"
+    "T/P rejections carry the requested theme ID, not the previous persisted theme",
+    "Resume accepts a matching partial manifest and appends its missing tail after validating the known prefix",
+    "A fresh replace task supersedes the previous unfinished transfer record without deleting other theme directories",
+    "Show the official receive page from T begin, including detailed T/P errors"
   ],
-  "wireProtocolChanged": false
+  "wireProtocolChanged": false,
+  "hardwareInvalidManifestResolved": false
 }

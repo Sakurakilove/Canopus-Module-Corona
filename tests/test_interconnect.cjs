@@ -337,6 +337,52 @@ async function main() {
   native.text.clear(); native.binary.clear(); native.directories.clear();
   native.directories.add('internal://files/'); native.mutations.length = 0; sent.length = 0;
 
+  // AstroBox issues its resume token at T begin, so a retry can arrive before
+  // the manifest contains any entries, in its middle, or before T end.
+  for (const receivedEntries of [0, 1, 2]) {
+    const partialFiles = [{ relativePath: 'corona.json', sizeBytes: 1 },
+      { relativePath: 'icons/a.bin', sizeBytes: 2 }];
+    const partialHeader = { themeId: 'partial_manifest', mode: 'replace', fileCount: 2, totalBytes: 3 };
+    let rx = new InterconnectThemeReceiver();
+    rx.start();
+    const exchange = async value => {
+      const start = sent.length;
+      connection.onmessage({ data: 'T' + JSON.stringify(value) });
+      await rx.queue;
+      return innerSent().slice(start).map(packet => JSON.parse(packet.slice(1)));
+    };
+    await exchange({ operation: 'begin', ...partialHeader });
+    for (let fileIndex = 0; fileIndex < receivedEntries; fileIndex++)
+      await exchange({ operation: 'file', themeId: partialHeader.themeId, fileIndex, ...partialFiles[fileIndex] });
+    rx.stop(); rx = new InterconnectThemeReceiver(); rx.start();
+    let result = await exchange({ operation: 'begin', ...partialHeader, mode: 'resume' });
+    assert(result.some(packet => packet.itemType === 'begin'), 'partial manifest accepts the phone resume token');
+    const beforeMismatch = await durableStateText();
+    if (receivedEntries) {
+      result = await exchange({ operation: 'file', themeId: partialHeader.themeId,
+        fileIndex: 0, relativePath: 'corona.json', sizeBytes: 2 });
+      assert(result.some(packet => packet.errorCode === 'invalid-manifest'));
+      assert.equal(await durableStateText(), beforeMismatch, 'changed replay entry cannot overwrite prior progress');
+    }
+    for (const [fileIndex, entry] of partialFiles.entries()) {
+      result = await exchange({ operation: 'file', themeId: partialHeader.themeId, fileIndex, ...entry });
+      assert(result.some(packet => packet.itemType === 'file' && packet.fileIndex === fileIndex));
+      if (fileIndex === 0) {
+        // Reboot while replaying the known prefix must not invalidate the journal.
+        rx.stop(); rx = new InterconnectThemeReceiver(); rx.start();
+        result = await exchange({ operation: 'begin', ...partialHeader, mode: 'resume' });
+        assert(result.some(packet => packet.itemType === 'begin'));
+        await exchange({ operation: 'file', themeId: partialHeader.themeId, fileIndex: 0, ...entry });
+      }
+    }
+    result = await exchange({ operation: 'end', themeId: partialHeader.themeId });
+    assert(result.some(packet => packet.status === 'ready'));
+    assert.equal(JSON.parse(await durableStateText()).manifestComplete, true);
+    rx.stop(); clearTransferState();
+  }
+  native.text.clear(); native.binary.clear(); native.directories.clear();
+  native.directories.add('internal://files/'); native.mutations.length = 0; sent.length = 0;
+
   const states = [];
   let transferPageRequests = 0;
   let receiver = new InterconnectThemeReceiver(() => { transferPageRequests++; });
@@ -412,10 +458,16 @@ async function main() {
   let reply = messages(await deliver('T' + JSON.stringify({ operation: 'begin', ...header })));
   assert(reply.some(packet => packet.operation === 'ack' && packet.itemType === 'begin'));
   const previousTransfer = await durableStateText();
-  reply = messages(await deliver('T' + JSON.stringify({ operation: 'begin', ...header, themeId: 'other' })));
+  reply = messages(await deliver('T' + JSON.stringify({ operation: 'begin', ...header, themeId: 'other', mode: 'resume' })));
   assert(reply.some(packet => packet.errorCode === 'invalid-manifest' && packet.themeId === 'other'),
     'AstroBox must receive a rejection for its requested theme, not filter an old theme ID');
   assert.equal(await durableStateText(), previousTransfer, 'rejection preserves unfinished theme data');
+  native.binary.set('internal://files/themes/dark/partial.bin', Uint8Array.from([9]));
+  reply = messages(await deliver('T' + JSON.stringify({ operation: 'begin', ...header, themeId: 'other' })));
+  assert(reply.some(packet => packet.itemType === 'begin'), 'a fresh task supersedes an abandoned different transfer');
+  assert.deepEqual([...native.binary.get('internal://files/themes/dark/partial.bin')], [9],
+    'switching transfers never removes the previous theme directory');
+  await deliver('T' + JSON.stringify({ operation: 'begin', ...header }));
   reply = messages(await deliver('T' + JSON.stringify({ operation: 'file', themeId: 'dark', fileIndex: 0,
     relativePath: '../bad', sizeBytes: 2 })));
   assert(reply.some(packet => packet.errorCode === 'invalid-manifest' || packet.errorCode === 'invalid-path'));
@@ -428,11 +480,12 @@ async function main() {
   reply = messages(await deliver('T' + JSON.stringify({ operation: 'end', themeId: 'dark' })));
   assert(reply.some(packet => packet.operation === 'status' && packet.status === 'ready'));
   assert.equal(native.text.has('internal://files/themes/dark/mappings.tsv'), false);
-  assert.equal(transferPageRequests, 0); // No navigation before the first valid P packet.
+  assert(transferPageRequests > 0); // Manifest/rejection details are visible before P.
+  const beforeFirstPrepare = transferPageRequests;
   reply = messages(await deliver('P' + JSON.stringify({ themeId: 'other', fileIndex: 0,
     sizeBytes: 2, chunkSizeBytes: 1, chunkCount: 2 })));
   assert(reply.some(packet => packet.errorCode === 'invalid-manifest'));
-  assert.equal(transferPageRequests, 0);
+  assert.equal(transferPageRequests, beforeFirstPrepare);
 
   const coronaChunkSize = Math.ceil(coronaBytes.length / 2);
   const coronaChunkCount = Math.ceil(coronaBytes.length / coronaChunkSize);
@@ -441,14 +494,14 @@ async function main() {
   reply = messages(await deliver('P' + JSON.stringify({ themeId: 'dark', fileIndex: 0,
     sizeBytes: coronaBytes.length, chunkSizeBytes: coronaChunkSize, chunkCount: coronaChunkCount })));
   assert(reply.some(packet => packet.status === 'ready'));
-  assert.equal(transferPageRequests, 1);
+  assert.equal(transferPageRequests, beforeFirstPrepare);
   reply = messages(await deliver(`F00000001${encodeBase91(coronaChunk(1))}`));
   assert(reply.includes('A00000001'));
   reply = messages(await deliver('P' + JSON.stringify({ themeId: 'dark', fileIndex: 0,
     sizeBytes: coronaBytes.length, chunkSizeBytes: coronaChunkSize, chunkCount: coronaChunkCount })));
   assert(reply.some(packet => packet.status === 'resume' &&
     JSON.stringify(packet.receivedRanges) === '[[1,1]]'));
-  assert.equal(transferPageRequests, 1); // P packets for further files do not navigate again.
+  assert.equal(transferPageRequests, beforeFirstPrepare); // File preparations do not navigate again.
   reply = messages(await deliver(`F00000000${encodeBase91(coronaChunk(0))}`));
   assert(reply.includes('A00000000'));
   assert.equal(states.at(-1).phase, 'receiving');
@@ -481,7 +534,7 @@ async function main() {
     sizeBytes: coronaBytes.length, chunkSizeBytes: coronaChunkSize, chunkCount: coronaChunkCount })));
   assert(reply.some(packet => packet.status === 'complete' &&
     JSON.stringify(packet.receivedRanges) === '[[0,1]]'));
-  assert.equal(transferPageRequests, 2); // A resumed upload on a new app session opens once.
+  assert.equal(transferPageRequests, beforeFirstPrepare + 1); // The resumed T begin opens the page.
   reply = await deliver('C0000');
   assert(reply.includes('C0000'));
   const completedProgress = JSON.parse(await durableStateText());
@@ -492,7 +545,7 @@ async function main() {
 
   await deliver('P' + JSON.stringify({ themeId: 'dark', fileIndex: 1,
     sizeBytes: 3, chunkSizeBytes: 3, chunkCount: 1 }));
-  assert.equal(transferPageRequests, 2);
+  assert.equal(transferPageRequests, beforeFirstPrepare + 1);
   reply = await deliver(`F00010000${encodeBase91([1, 2, 255])}`);
   assert(reply.includes('A00010000'));
   assert.deepEqual([...native.binary.get('internal://files/themes/dark/icons/a.bin')], [1, 2, 255]);
